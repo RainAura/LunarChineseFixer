@@ -73,7 +73,7 @@ internal sealed class MainForm : Form
         };
         var subtitle = new Label
         {
-            Text = "Lunar Client 1.8.9 中文错字修复  ·  v1.0.8",
+            Text = "Lunar Client 1.8.9 中文错字修复  ·  v1.0.9",
             Location = new Point(84, 50),
             Size = new Size(430, 22),
             ForeColor = Theme.Muted
@@ -91,7 +91,7 @@ internal sealed class MainForm : Form
         _toolTip.SetToolTip(_githubButton, "打开 GitHub 项目仓库");
         var authorLabel = new Label
         {
-            Text = "作者  RainAura & Codex",
+            Text = "作者  RainAura",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = new Font("Microsoft YaHei UI", 8.5F),

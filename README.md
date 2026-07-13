@@ -6,7 +6,8 @@
 
 ## 功能
 
-- 自动检测 `.lunarclient/offline/multiver/cache` 内的 Lunar 1.8.9 缓存包；
+- 自动检测 `.lunarclient/offline/multiver/cache` 内的 ZIP、JAR 格式 Lunar 1.8.9 缓存包；
+- 兼容点号类名、标准 `.class` 斜杠路径及不同缓存归档名称；
 - 找不到目录时，可手动选择包含 `offline` 文件夹的 `.lunarclient` 目录；
 - 自动检测 Lunar 游戏是否仍在运行，避免运行中修改文件；
 - 一键修补 Lunar 的字体渲染缓存清理流程；
@@ -41,7 +42,7 @@ dotnet publish -c Release -r win-x64 --self-contained true
 
 ## 作者
 
-RainAura & Codex
+RainAura
 
 ## 许可证
 

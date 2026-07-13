@@ -5,6 +5,7 @@ namespace RainAura.LunarFontFixer.Services;
 internal sealed class LunarCachePatchService
 {
     internal const string FontRendererEntry = "net.minecraft.client.gui.FontRenderer";
+    internal const string FontRendererClassEntry = "net/minecraft/client/gui/FontRenderer.class";
     internal const string BackupSuffix = ".LunarChineseFixer-original";
     private const string LegacyBackupSuffix = ".RainAura-original";
     private readonly HashSet<string> _manualRoots = new(StringComparer.OrdinalIgnoreCase);
@@ -13,18 +14,15 @@ internal sealed class LunarCachePatchService
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         var fullPath = Path.GetFullPath(path.Trim());
-        if (Directory.Exists(Path.Combine(fullPath, "offline"))) _manualRoots.Add(fullPath);
-        else if (Directory.Exists(Path.Combine(fullPath, ".lunarclient", "offline")))
-            _manualRoots.Add(Path.Combine(fullPath, ".lunarclient"));
-        else _manualRoots.Add(fullPath);
+        var root = ResolveLunarRoot(fullPath);
+        _manualRoots.Add(root);
     }
 
     public IReadOnlyList<LunarCacheTarget> Scan()
     {
-        var roots = new HashSet<string>(_manualRoots, StringComparer.OrdinalIgnoreCase)
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".lunarclient")
-        };
+        var roots = new HashSet<string>(_manualRoots, StringComparer.OrdinalIgnoreCase);
+        AddDefaultRoots(roots);
+
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var root in roots)
         {
@@ -32,8 +30,13 @@ internal sealed class LunarCachePatchService
             try
             {
                 if (!Directory.Exists(cache)) continue;
-                foreach (var path in Directory.EnumerateFiles(cache, "bake.zip", SearchOption.AllDirectories))
-                    paths.Add(path);
+                foreach (var path in Directory.EnumerateFiles(cache, "*", SearchOption.AllDirectories))
+                {
+                    var extension = Path.GetExtension(path);
+                    if (extension.Equals(".zip", StringComparison.OrdinalIgnoreCase) ||
+                        extension.Equals(".jar", StringComparison.OrdinalIgnoreCase))
+                        paths.Add(path);
+                }
             }
             catch
             {
@@ -78,42 +81,46 @@ internal sealed class LunarCachePatchService
         try
         {
             using var archive = ZipFile.OpenRead(path);
-            var entry = archive.GetEntry(FontRendererEntry);
-            if (entry is null) return null;
-            var data = ReadEntry(entry);
-            var state = JavaClassPatcher.Inspect(data) switch
-            {
-                JavaPatchState.Patchable => LunarCacheState.NeedsRepair,
-                JavaPatchState.AlreadyPatched => LunarCacheState.Repaired,
-                _ => LunarCacheState.Unsupported
-            };
+            var entries = FindFontRendererEntries(archive).ToList();
+            if (entries.Count == 0) return null;
+
+            var states = entries.Select(x => JavaClassPatcher.Inspect(ReadEntry(x))).ToList();
+            var state = states.Any(x => x == JavaPatchState.Patchable)
+                ? LunarCacheState.NeedsRepair
+                : states.Any(x => x == JavaPatchState.AlreadyPatched)
+                    ? LunarCacheState.Repaired
+                    : LunarCacheState.Unsupported;
             var cacheId = Directory.GetParent(path)?.Name ?? "未知版本";
-            return new LunarCacheTarget(path, $"Lunar 1.8.9 缓存 · {cacheId}", state,
+            var archiveName = Path.GetFileName(path);
+            return new LunarCacheTarget(path, $"Lunar 1.8.9 缓存 · {cacheId} · {archiveName}", state,
                 FindBackup(path) is not null);
         }
         catch
         {
-            return new LunarCacheTarget(path, "Lunar 缓存（读取失败）", LunarCacheState.Unreadable,
-                FindBackup(path) is not null);
+            return new LunarCacheTarget(path, $"Lunar 缓存（读取失败）· {Path.GetFileName(path)}",
+                LunarCacheState.Unreadable, FindBackup(path) is not null);
         }
     }
 
     private static void PatchArchive(string path)
     {
-        byte[] originalClass;
-        DateTimeOffset timestamp;
+        var replacements = new List<EntryReplacement>();
         using (var archive = ZipFile.OpenRead(path))
         {
-            var entry = archive.GetEntry(FontRendererEntry) ??
-                throw new InvalidDataException("缓存包中缺少 FontRenderer。");
-            timestamp = entry.LastWriteTime;
-            originalClass = ReadEntry(entry);
+            foreach (var entry in FindFontRendererEntries(archive))
+            {
+                var originalClass = ReadEntry(entry);
+                if (!JavaClassPatcher.TryPatch(originalClass, out var patchedClass, out var state) ||
+                    state == JavaPatchState.Unsupported)
+                    continue;
+                if (state == JavaPatchState.Patchable)
+                    replacements.Add(new EntryReplacement(entry.FullName, entry.LastWriteTime,
+                        entry.ExternalAttributes, patchedClass));
+            }
         }
 
-        if (!JavaClassPatcher.TryPatch(originalClass, out var patchedClass, out var state) ||
-            state == JavaPatchState.Unsupported)
-            throw new InvalidDataException("该 Lunar 缓存版本不支持自动修复。");
-        if (state == JavaPatchState.AlreadyPatched) return;
+        if (replacements.Count == 0)
+            throw new InvalidDataException("该 Lunar 缓存包中没有可自动修复的 FontRenderer 类。");
 
         var backup = FindBackup(path) ?? path + BackupSuffix;
         if (!File.Exists(backup)) File.Copy(path, backup, false);
@@ -124,21 +131,28 @@ internal sealed class LunarCachePatchService
         {
             using (var archive = ZipFile.Open(temporary, ZipArchiveMode.Update))
             {
-                var oldEntry = archive.GetEntry(FontRendererEntry) ??
-                    throw new InvalidDataException("缓存包中缺少 FontRenderer。");
-                oldEntry.Delete();
-                var newEntry = archive.CreateEntry(FontRendererEntry, CompressionLevel.Optimal);
-                newEntry.LastWriteTime = timestamp;
-                using var stream = newEntry.Open();
-                stream.Write(patchedClass, 0, patchedClass.Length);
+                foreach (var replacement in replacements)
+                {
+                    var oldEntry = archive.GetEntry(replacement.Name) ??
+                        throw new InvalidDataException($"缓存包中缺少 {replacement.Name}。");
+                    oldEntry.Delete();
+                    var newEntry = archive.CreateEntry(replacement.Name, CompressionLevel.Optimal);
+                    newEntry.LastWriteTime = replacement.Timestamp;
+                    newEntry.ExternalAttributes = replacement.ExternalAttributes;
+                    using var stream = newEntry.Open();
+                    stream.Write(replacement.Data, 0, replacement.Data.Length);
+                }
             }
             ReplaceFromFile(temporary, path, false);
 
             using var checkArchive = ZipFile.OpenRead(path);
-            var checkEntry = checkArchive.GetEntry(FontRendererEntry) ??
-                throw new InvalidDataException("写入后未找到 FontRenderer。");
-            if (JavaClassPatcher.Inspect(ReadEntry(checkEntry)) != JavaPatchState.AlreadyPatched)
-                throw new InvalidDataException("Lunar 缓存补丁写入校验失败。");
+            foreach (var replacement in replacements)
+            {
+                var checkEntry = checkArchive.GetEntry(replacement.Name) ??
+                    throw new InvalidDataException($"写入后未找到 {replacement.Name}。");
+                if (JavaClassPatcher.Inspect(ReadEntry(checkEntry)) != JavaPatchState.AlreadyPatched)
+                    throw new InvalidDataException($"{replacement.Name} 补丁写入校验失败。");
+            }
         }
         catch
         {
@@ -151,12 +165,54 @@ internal sealed class LunarCachePatchService
         }
     }
 
+    private static IEnumerable<ZipArchiveEntry> FindFontRendererEntries(ZipArchive archive)
+    {
+        foreach (var entry in archive.Entries)
+        {
+            var name = entry.FullName.Replace('\\', '/').TrimStart('/');
+            if (name.Equals(FontRendererEntry, StringComparison.Ordinal) ||
+                name.Equals(FontRendererEntry + ".class", StringComparison.Ordinal) ||
+                name.Equals(FontRendererClassEntry, StringComparison.Ordinal) ||
+                name.EndsWith("/" + FontRendererClassEntry, StringComparison.Ordinal))
+                yield return entry;
+        }
+    }
+
     private static byte[] ReadEntry(ZipArchiveEntry entry)
     {
         using var source = entry.Open();
         using var memory = new MemoryStream();
         source.CopyTo(memory);
         return memory.ToArray();
+    }
+
+    private static void AddDefaultRoots(ISet<string> roots)
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(profile)) roots.Add(Path.Combine(profile, ".lunarclient"));
+
+        foreach (var variable in new[] { "LUNAR_HOME", "LUNARCLIENT_HOME" })
+        {
+            var value = Environment.GetEnvironmentVariable(variable);
+            if (!string.IsNullOrWhiteSpace(value)) roots.Add(ResolveLunarRoot(Path.GetFullPath(value)));
+        }
+    }
+
+    private static string ResolveLunarRoot(string path)
+    {
+        if (Directory.Exists(Path.Combine(path, "offline"))) return path;
+        if (Directory.Exists(Path.Combine(path, ".lunarclient", "offline")))
+            return Path.Combine(path, ".lunarclient");
+
+        var current = new DirectoryInfo(path);
+        while (current is not null)
+        {
+            if (current.Name.Equals(".lunarclient", StringComparison.OrdinalIgnoreCase) &&
+                Directory.Exists(Path.Combine(current.FullName, "offline")))
+                return current.FullName;
+            current = current.Parent;
+        }
+        return path;
     }
 
     private static string? FindBackup(string path)
@@ -183,5 +239,21 @@ internal sealed class LunarCachePatchService
             if (File.Exists(temporary)) File.Delete(temporary);
             if (File.Exists(rollback)) File.Delete(rollback);
         }
+    }
+
+    private sealed class EntryReplacement
+    {
+        public EntryReplacement(string name, DateTimeOffset timestamp, int externalAttributes, byte[] data)
+        {
+            Name = name;
+            Timestamp = timestamp;
+            ExternalAttributes = externalAttributes;
+            Data = data;
+        }
+
+        public string Name { get; }
+        public DateTimeOffset Timestamp { get; }
+        public int ExternalAttributes { get; }
+        public byte[] Data { get; }
     }
 }

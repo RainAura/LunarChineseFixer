@@ -66,7 +66,7 @@ internal sealed class LunarConfigService
             builder.AppendLine($"[{target.DisplayState}] {target.Source}");
         builder.AppendLine();
         builder.AppendLine("修复原理：为 Lunar FontRenderer 的资源重载流程补充 clearCaches 调用，防止旧字形显示列表继续引用错误的 Unicode 贴图页。");
-        builder.AppendLine("作者：RainAura & Codex");
+        builder.AppendLine("作者：RainAura");
         return builder.ToString();
     }
 
