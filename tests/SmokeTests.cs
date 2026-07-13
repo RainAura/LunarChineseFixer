@@ -40,7 +40,7 @@ try
     Assert(rollback.Count == 2 && rollback.All(x => x.State == LunarCacheState.NeedsRepair),
         "恢复后应回到未修复状态");
 
-    Console.WriteLine("PASS: Lunar 缓存扫描、双层补丁、校验、备份、恢复全部通过。");
+    Console.WriteLine("PASS: Lunar 缓存扫描、兜底注入、纹理补丁、校验、备份、恢复全部通过。");
     return 0;
 }
 finally

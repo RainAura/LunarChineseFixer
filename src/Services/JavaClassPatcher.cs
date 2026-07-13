@@ -15,6 +15,8 @@ internal static class JavaClassPatcher
     private const string ReloadDescriptor = "(Lnet/minecraft/client/resources/IResourceManager;)V";
     private const string ClearName = "clearCaches";
     private const string VoidDescriptor = "()V";
+    private const string RenderName = "renderStringAtPos";
+    private const string RenderDescriptor = "(Ljava/lang/String;ZI)V";
 
     public static JavaPatchState Inspect(byte[] input)
     {
@@ -35,9 +37,20 @@ internal static class JavaClassPatcher
                 return false;
             }
 
-            if (ContainsClearCachesCall(input, info))
+            var reloadPatched = ContainsClearCachesCall(input, info);
+            var fallbackPatched = ContainsFallbackBypass(input, info);
+            if (reloadPatched && fallbackPatched)
             {
                 state = JavaPatchState.AlreadyPatched;
+                return true;
+            }
+
+            var working = input;
+            if (reloadPatched)
+            {
+                working = PatchFallbackBypass(working, info);
+                output = working;
+                state = JavaPatchState.Patchable;
                 return true;
             }
 
@@ -87,7 +100,11 @@ internal static class JavaClassPatcher
                 0xB6, (byte)(methodReference >> 8), (byte)methodReference
             });
 
-            output = bytes.ToArray();
+            working = bytes.ToArray();
+            var patchedInfo = Parse(working);
+            if (!ContainsFallbackBypass(working, patchedInfo))
+                working = PatchFallbackBypass(working, patchedInfo);
+            output = working;
             state = JavaPatchState.Patchable;
             return true;
         }
@@ -96,6 +113,49 @@ internal static class JavaClassPatcher
             state = JavaPatchState.Unsupported;
             return false;
         }
+    }
+
+    private static byte[] PatchFallbackBypass(byte[] input, ClassInfo info)
+    {
+        if (info.RenderCodeStart < 0 || info.RenderCodeLength < 12)
+            throw new InvalidDataException("未找到 Lunar 字体显示列表缓存入口。");
+
+        var methodReference = FindMethodReference(info, info.ThisClassIndex,
+            FindNameAndType(info, ClearName, VoidDescriptor));
+        if (methodReference == 0)
+            throw new InvalidDataException("未找到 Lunar 字体缓存清理调用。");
+
+        var offset = info.RenderCodeStart;
+        if (input[offset] != 0x2A || input[offset + 1] != 0xB4 ||
+            input[offset + 4] != 0x2B || input[offset + 5] != 0x1D ||
+            input[offset + 6] != 0x1C || input[offset + 7] != 0xB6 ||
+            input[offset + 10] != 0x3A || input[offset + 11] != 0x04)
+            throw new InvalidDataException("Lunar 字体缓存入口结构不受支持。");
+
+        var bytes = (byte[])input.Clone();
+        var replacement = new byte[]
+        {
+            0x2A,
+            0xB6, (byte)(methodReference >> 8), (byte)methodReference,
+            0x01,
+            0x3A, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00
+        };
+        Buffer.BlockCopy(replacement, 0, bytes, offset, replacement.Length);
+        return bytes;
+    }
+
+    private static bool ContainsFallbackBypass(byte[] data, ClassInfo info)
+    {
+        if (info.RenderCodeStart < 0 || info.RenderCodeLength < 7) return false;
+        var offset = info.RenderCodeStart;
+        if (data[offset] != 0x2A || data[offset + 1] != 0xB6 ||
+            data[offset + 4] != 0x01 || data[offset + 5] != 0x3A || data[offset + 6] != 0x04)
+            return false;
+        var reference = ReadU2(data, offset + 2);
+        return reference > 0 && reference < info.Tags.Length && info.Tags[reference] == 10 &&
+               info.First[reference] == info.ThisClassIndex &&
+               IsNameAndType(info, info.Second[reference], ClearName, VoidDescriptor);
     }
 
     private static bool ContainsClearCachesCall(byte[] data, ClassInfo info)
@@ -190,6 +250,7 @@ internal static class JavaClassPatcher
             var attributeCount = ReadU2(data, cursor + 4);
             cursor += 6;
             var isTarget = utf8[nameIndex] == ReloadName && utf8[descriptorIndex] == ReloadDescriptor;
+            var isRenderTarget = utf8[nameIndex] == RenderName && utf8[descriptorIndex] == RenderDescriptor;
             for (var attribute = 0; attribute < attributeCount; attribute++)
             {
                 var attributeStart = cursor;
@@ -202,6 +263,11 @@ internal static class JavaClassPatcher
                     info.CodeLengthOffset = cursor + 10;
                     info.TargetCodeLength = checked((int)ReadU4(data, info.CodeLengthOffset));
                     info.TargetCodeStart = cursor + 14;
+                }
+                if (isRenderTarget && utf8[attributeName] == "Code")
+                {
+                    info.RenderCodeLength = checked((int)ReadU4(data, cursor + 10));
+                    info.RenderCodeStart = cursor + 14;
                 }
                 cursor = attributeStart + 6 + attributeLength;
             }
@@ -296,5 +362,7 @@ internal static class JavaClassPatcher
         public int CodeLengthOffset { get; set; } = -1;
         public int TargetCodeStart { get; set; } = -1;
         public int TargetCodeLength { get; set; }
+        public int RenderCodeStart { get; set; } = -1;
+        public int RenderCodeLength { get; set; }
     }
 }

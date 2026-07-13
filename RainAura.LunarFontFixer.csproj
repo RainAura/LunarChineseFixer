@@ -11,9 +11,9 @@
     <Authors>RainAura</Authors>
     <Company>RainAura</Company>
     <Product>Lunar 1.8.9 中文错字修复工具</Product>
-    <Description>修复 Lunar Client 1.8.9 中文字形缓存和 Unicode 纹理页绑定错误。</Description>
+    <Description>通过字体缓存兜底注入修复 Lunar Client 1.8.9 中文字形和 Unicode 纹理页错误。</Description>
     <Copyright>Copyright © RainAura 2026</Copyright>
-    <Version>1.0.10</Version>
+    <Version>1.0.11</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <DebugType>none</DebugType>
   </PropertyGroup>
