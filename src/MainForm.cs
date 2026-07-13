@@ -18,9 +18,9 @@ internal sealed class MainForm : Form
     private readonly ListView _targetList = new();
     private readonly RichTextBox _logBox = new();
     private readonly Button _scanButton = new() { Text = "重新扫描" };
-    private readonly Button _browseButton = new() { Text = "选择游戏路径" };
+    private readonly Button _browseButton = new() { Text = "选择 Lunar 目录" };
     private readonly Button _fixButton = new() { Text = "一键修复" };
-    private readonly Button _restoreButton = new() { Text = "恢复字体设置" };
+    private readonly Button _restoreButton = new() { Text = "恢复原始文件" };
     private readonly Button _reportButton = new() { Text = "导出报告" };
     private readonly IconTextButton _githubButton = new();
     private readonly ToolTip _toolTip = new();
@@ -73,7 +73,7 @@ internal sealed class MainForm : Form
         };
         var subtitle = new Label
         {
-            Text = "Lunar Client 1.8.9 中文错字修复  ·  v1.0.7",
+            Text = "Lunar Client 1.8.9 中文错字修复  ·  v1.0.8",
             Location = new Point(84, 50),
             Size = new Size(430, 22),
             ForeColor = Theme.Muted
@@ -155,8 +155,8 @@ internal sealed class MainForm : Form
             Height = 66,
             BackColor = Color.White
         };
-        var configTitle = SectionTitle("检测到的配置", 18, 12);
-        _directoryHint.Text = "请选择 Lunar 客户端的我的世界路径";
+        var configTitle = SectionTitle("检测到的 Lunar 1.8.9 缓存", 18, 12);
+        _directoryHint.Text = "未检测到时，请选择包含 offline 文件夹的 .lunarclient 目录";
         _directoryHint.Location = new Point(18, 39);
         _directoryHint.Size = new Size(480, 22);
         _directoryHint.ForeColor = Theme.Muted;
@@ -248,13 +248,13 @@ internal sealed class MainForm : Form
 
     private async Task ScanAsync(string reason)
     {
-        SetBusy(true, "正在扫描…", "检查 Lunar 隔离配置、默认目录和历史 gameDir");
+        SetBusy(true, "正在扫描…", "检查 Lunar 1.8.9 运行缓存和字体补丁状态");
         Log(reason);
         try
         {
             _lastResult = await _service.ScanAsync();
             RenderResult(_lastResult);
-            Log($"扫描完成：找到 {_lastResult.ExistingCount} 个有效配置，{_lastResult.EnabledCount} 个需要修复");
+            Log($"扫描完成：找到 {_lastResult.CacheCount} 个可识别缓存，{_lastResult.UnpatchedCacheCount} 个需要修复");
         }
         catch (Exception ex) { ShowError(ex.Message); }
         finally { SetBusy(false); }
@@ -264,41 +264,56 @@ internal sealed class MainForm : Form
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "请选择 Lunar 客户端的我的世界路径（包含 optionsof.txt 的游戏目录）",
+            Description = "请选择 Lunar 客户端数据目录（通常名为 .lunarclient，里面包含 offline 文件夹）",
             ShowNewFolderButton = false
         };
 #if !NETFRAMEWORK
         dialog.UseDescriptionForTitle = true;
 #endif
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        _service.AddGameDirectory(dialog.SelectedPath);
-        Log("已添加手动选择的 .minecraft 目录");
-        await ScanAsync("扫描手动添加的游戏目录");
+        _service.AddLunarDirectory(dialog.SelectedPath);
+        Log("已添加手动选择的 Lunar 客户端目录");
+        await ScanAsync("扫描手动添加的 Lunar 客户端目录");
     }
 
     private async Task ApplyAsync(bool restore)
     {
-        if (_lastResult is null || _lastResult.ExistingCount == 0)
+        if (_lastResult is null || _lastResult.CacheCount == 0)
         {
-            MessageBox.Show("尚未检测到有效配置，请先选择 Lunar 客户端的我的世界路径。", "RainAura",
+            MessageBox.Show("尚未检测到 Lunar 1.8.9 缓存。请先启动一次 Lunar 1.8.9，或手动选择 .lunarclient 目录。", "提示",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         if (restore)
         {
             var answer = MessageBox.Show(
-                "恢复后会重新启用 OptiFine Custom Fonts，中文字库错位可能再次出现。是否继续？",
+                "将使用自动备份恢复 Lunar 原始缓存文件，字体错位问题可能再次出现。是否继续？",
                 "确认恢复", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes) return;
         }
-        SetBusy(true, restore ? "正在恢复…" : "正在修复…", "安全写入 UTF-8 配置文件");
+        SetBusy(true, restore ? "正在恢复…" : "正在修复…", "备份并安全更新 Lunar 字体渲染缓存");
         try
         {
-            var changed = await _service.ApplyAsync(_lastResult.Targets, restore);
-            Log($"{(restore ? "恢复" : "修复")}完成，共处理 {changed} 个配置文件");
+            var changed = restore
+                ? await _service.RestoreLunarCachesAsync(_lastResult.CacheTargets)
+                : await _service.PatchLunarCachesAsync(_lastResult.CacheTargets);
+            Log($"{(restore ? "恢复" : "修复")}完成，共处理 {changed} 个 Lunar 缓存包");
             await ScanAsync("写入后自动校验");
-            MessageBox.Show(restore ? "已恢复 Custom Fonts。" : "修复完成，现在可以启动 Lunar Client 1.8.9。",
-                "RainAura", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (restore)
+            {
+                MessageBox.Show($"已恢复 {changed} 个 Lunar 原始缓存文件。", "提示",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    $"已修复并校验 {changed} 个 Lunar 1.8.9 缓存包。\n\n" +
+                    "补丁会在材质重载时清空 Lunar 的旧文字显示列表。现在可以启动游戏；以后按 F3 + T 也会正确刷新中文字形。\n\n" +
+                    "Lunar 更新后如果覆盖缓存，重新运行本工具即可自动检测并修复。",
+                    "Lunar 字体缓存修复完成",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
         }
         catch (Exception ex) { ShowError(ex.Message); }
         finally { SetBusy(false); }
@@ -308,15 +323,15 @@ internal sealed class MainForm : Form
     {
         _targetList.BeginUpdate();
         _targetList.Items.Clear();
-        foreach (var target in result.Targets)
+        foreach (var target in result.CacheTargets)
         {
             var item = new ListViewItem(target.DisplayState);
             item.SubItems.Add(target.Source);
             item.ForeColor = target.State switch
             {
-                FontSettingState.Enabled => Theme.Warning,
-                FontSettingState.Disabled => Theme.Success,
-                FontSettingState.Missing => Theme.Muted,
+                LunarCacheState.NeedsRepair => Theme.Warning,
+                LunarCacheState.Repaired => Theme.Success,
+                LunarCacheState.Unsupported => Theme.Muted,
                 _ => Theme.Danger
             };
             _targetList.Items.Add(item);
@@ -325,24 +340,24 @@ internal sealed class MainForm : Form
 
         if (result.LunarGameRunning)
         {
-            SetStatus("请先退出 Lunar 游戏", "游戏运行时退出会覆盖配置，启动器可以保留", Theme.Danger);
+            SetStatus("请先退出 Lunar 游戏", "修改缓存前请退出游戏，建议同时退出 Lunar 启动器", Theme.Danger);
             _fixButton.Enabled = false;
         }
-        else if (result.ExistingCount == 0)
+        else if (result.CacheCount == 0)
         {
-            SetStatus("未检测到游戏目录", "请选择 Lunar 客户端的我的世界路径", Theme.Warning);
+            SetStatus("未检测到 Lunar 1.8.9 缓存", "请先启动一次 1.8.9，或手动选择 .lunarclient 目录", Theme.Warning);
             _directoryHint.ForeColor = Theme.Warning;
             _fixButton.Enabled = false;
         }
         else if (result.IsHealthy)
         {
-            SetStatus("当前状态正常", $"已检测 {result.ExistingCount} 个配置，Custom Fonts 均已关闭", Theme.Success);
+            SetStatus("当前状态正常", $"已检测并修复 {result.RepairedCacheCount} 个 Lunar 字体缓存包", Theme.Success);
             _directoryHint.ForeColor = Theme.Muted;
             _fixButton.Enabled = true;
         }
         else
         {
-            SetStatus("检测到字体错位风险", $"有 {result.EnabledCount} 个配置启用了 Custom Fonts", Theme.Warning);
+            SetStatus("检测到字体错位风险", $"有 {result.UnpatchedCacheCount} 个 Lunar 缓存包尚未修复", Theme.Warning);
             _directoryHint.ForeColor = Theme.Muted;
             _fixButton.Enabled = true;
         }
@@ -355,7 +370,7 @@ internal sealed class MainForm : Form
         {
             Title = "导出诊断报告",
             Filter = "文本文件 (*.txt)|*.txt",
-            FileName = $"RainAura-Lunar诊断-{DateTime.Now:yyyyMMdd-HHmmss}.txt"
+            FileName = $"LunarChineseFixer-诊断-{DateTime.Now:yyyyMMdd-HHmmss}.txt"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         File.WriteAllText(dialog.FileName, LunarConfigService.BuildReport(_lastResult), new UTF8Encoding(true));
@@ -385,7 +400,7 @@ internal sealed class MainForm : Form
         _progress.Visible = busy;
         _scanButton.Enabled = !busy;
         _browseButton.Enabled = !busy;
-        _restoreButton.Enabled = !busy;
+        _restoreButton.Enabled = !busy && (_lastResult?.CacheTargets.Any(x => x.BackupExists) ?? false);
         _reportButton.Enabled = !busy;
         if (busy)
         {
@@ -405,7 +420,7 @@ internal sealed class MainForm : Form
     {
         Log($"错误：{message}");
         SetStatus("操作未完成", message, Theme.Danger);
-        MessageBox.Show(message, "RainAura Lunar Fixer", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(message, "Lunar Chinese Fixer", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     private void Log(string message)

@@ -1,34 +1,38 @@
 using RainAura.LunarFontFixer;
 using RainAura.LunarFontFixer.Services;
-using System.Text;
-
-var root = Path.Combine(Path.GetTempPath(), "RainAura-LunarFixer-SmokeTests");
+var testBase = Environment.GetEnvironmentVariable("RAINAURA_TEST_ROOT") ?? Path.GetTempPath();
+var root = Path.Combine(testBase, "RainAura-LunarFixer-SmokeTests");
 if (Directory.Exists(root)) Directory.Delete(root, true);
 Directory.CreateDirectory(root);
 
 try
 {
-    var options = Path.Combine(root, "optionsof.txt");
-    File.WriteAllText(options, "ofFastRender:false\nofCustomFonts:true\nofSmartAnimations:false\n", new UTF8Encoding(false));
+    var lunarBackup = Environment.GetEnvironmentVariable("RAINAURA_LUNAR_BACKUP");
+    if (string.IsNullOrWhiteSpace(lunarBackup) || !File.Exists(lunarBackup))
+    {
+        Console.WriteLine("SKIP: 未提供 RAINAURA_LUNAR_BACKUP，跳过真实 Lunar 缓存测试。");
+        return 0;
+    }
 
-    LunarConfigService.SetCustomFonts(options, false);
-    var fixedText = File.ReadAllText(options, Encoding.UTF8);
-    Assert(fixedText.Contains("ofCustomFonts:false"), "Custom Fonts 应变为 false");
-    Assert(fixedText.Contains("ofFastRender:false"), "其他选项必须保留");
-    Assert(!fixedText.Contains("ofCustomFonts:true"), "旧设置不应残留");
+    var lunarRoot = Path.Combine(root, ".lunarclient");
+    var cacheDirectory = Path.Combine(lunarRoot, "offline", "multiver", "cache", "test-build");
+    Directory.CreateDirectory(cacheDirectory);
+    var testArchive = Path.Combine(cacheDirectory, "bake.zip");
+    File.Copy(lunarBackup, testArchive);
 
-    var service = new LunarConfigService();
-    service.AddGameDirectory(root);
-    var scan = service.Scan();
-    var target = scan.Targets.FirstOrDefault(x => string.Equals(x.Path, options, StringComparison.OrdinalIgnoreCase));
-    Assert(target is not null, "应识别手动添加的目录");
-    Assert(target!.State == FontSettingState.Disabled, "扫描结果应为已修复");
+    var cacheService = new LunarCachePatchService();
+    cacheService.AddRoot(lunarRoot);
+    var before = cacheService.Scan().Single(x => x.Path == testArchive);
+    Assert(before.State == LunarCacheState.NeedsRepair, "原始 Lunar 缓存应显示需要修复");
+    Assert(cacheService.Patch(new[] { before }) == 1, "应成功修复一个 Lunar 缓存包");
+    var after = cacheService.Scan().Single(x => x.Path == testArchive);
+    Assert(after.State == LunarCacheState.Repaired, "修复后应通过字节码复检");
+    Assert(File.Exists(testArchive + LunarCachePatchService.BackupSuffix), "修复前必须创建原始备份");
+    Assert(cacheService.Restore(new[] { after }) == 1, "应能恢复原始 Lunar 缓存包");
+    var rollback = cacheService.Scan().Single(x => x.Path == testArchive);
+    Assert(rollback.State == LunarCacheState.NeedsRepair, "恢复后应回到未修复状态");
 
-    LunarConfigService.SetCustomFonts(options, true);
-    var restored = File.ReadAllText(options, Encoding.UTF8);
-    Assert(restored.Contains("ofCustomFonts:true"), "恢复功能应变为 true");
-
-    Console.WriteLine("PASS: 配置替换、选项保留、目录扫描、恢复功能全部通过。");
+    Console.WriteLine("PASS: Lunar 缓存扫描、补丁、校验、备份、恢复全部通过。");
     return 0;
 }
 finally

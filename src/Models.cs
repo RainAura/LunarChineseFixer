@@ -1,49 +1,52 @@
 namespace RainAura.LunarFontFixer;
 
-internal enum FontSettingState
+internal enum LunarCacheState
 {
-    Missing,
-    Enabled,
-    Disabled,
-    Unknown
+    NeedsRepair,
+    Repaired,
+    Unsupported,
+    Unreadable
 }
 
-internal sealed class ConfigTarget
+internal sealed class LunarCacheTarget
 {
-    public ConfigTarget(string path, string source, FontSettingState state)
+    public LunarCacheTarget(string path, string source, LunarCacheState state, bool backupExists)
     {
         Path = path;
         Source = source;
         State = state;
+        BackupExists = backupExists;
     }
 
     public string Path { get; }
     public string Source { get; }
-    public FontSettingState State { get; }
+    public LunarCacheState State { get; }
+    public bool BackupExists { get; }
 
     public string DisplayState => State switch
     {
-        FontSettingState.Enabled => "需要修复",
-        FontSettingState.Disabled => "已修复",
-        FontSettingState.Missing => "文件不存在",
-        _ => "未检测到设置"
+        LunarCacheState.NeedsRepair => "需要修复",
+        LunarCacheState.Repaired => "已修复",
+        LunarCacheState.Unsupported => "版本不匹配",
+        _ => "读取失败"
     };
 }
 
 internal sealed class ScanResult
 {
-    public ScanResult(IReadOnlyList<ConfigTarget> targets, bool lunarGameRunning, DateTime scannedAt)
+    public ScanResult(IReadOnlyList<LunarCacheTarget> cacheTargets, bool lunarGameRunning, DateTime scannedAt)
     {
-        Targets = targets;
+        CacheTargets = cacheTargets;
         LunarGameRunning = lunarGameRunning;
         ScannedAt = scannedAt;
     }
 
-    public IReadOnlyList<ConfigTarget> Targets { get; }
+    public IReadOnlyList<LunarCacheTarget> CacheTargets { get; }
     public bool LunarGameRunning { get; }
     public DateTime ScannedAt { get; }
 
-    public int ExistingCount => Targets.Count(x => x.State != FontSettingState.Missing);
-    public int EnabledCount => Targets.Count(x => x.State == FontSettingState.Enabled);
-    public bool IsHealthy => ExistingCount > 0 && EnabledCount == 0;
+    public int CacheCount => CacheTargets.Count(x => x.State is LunarCacheState.NeedsRepair or LunarCacheState.Repaired);
+    public int UnpatchedCacheCount => CacheTargets.Count(x => x.State == LunarCacheState.NeedsRepair);
+    public int RepairedCacheCount => CacheTargets.Count(x => x.State == LunarCacheState.Repaired);
+    public bool IsHealthy => CacheCount > 0 && UnpatchedCacheCount == 0;
 }

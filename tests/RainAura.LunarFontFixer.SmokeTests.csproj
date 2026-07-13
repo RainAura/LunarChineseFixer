@@ -10,5 +10,7 @@
     <Compile Include="SmokeTests.cs" />
     <Compile Include="../src/Models.cs" Link="Models.cs" />
     <Compile Include="../src/Services/LunarConfigService.cs" Link="LunarConfigService.cs" />
+    <Compile Include="../src/Services/LunarCachePatchService.cs" Link="LunarCachePatchService.cs" />
+    <Compile Include="../src/Services/JavaClassPatcher.cs" Link="JavaClassPatcher.cs" />
   </ItemGroup>
 </Project>

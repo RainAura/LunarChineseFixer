@@ -11,9 +11,9 @@
     <Authors>RainAura</Authors>
     <Company>RainAura</Company>
     <Product>Lunar 1.8.9 中文错字修复工具</Product>
-    <Description>修复 Lunar Client 1.8.9 自定义字体字库页错位问题。</Description>
+    <Description>修复 Lunar Client 1.8.9 资源重载后旧中文字形缓存未清除的问题。</Description>
     <Copyright>Copyright © RainAura 2026</Copyright>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <DebugType>none</DebugType>
   </PropertyGroup>
@@ -31,5 +31,7 @@
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
 </Project>
