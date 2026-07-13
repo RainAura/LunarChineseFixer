@@ -11,9 +11,9 @@
     <Authors>RainAura</Authors>
     <Company>RainAura</Company>
     <Product>Lunar 1.8.9 中文错字修复工具</Product>
-    <Description>通过字体缓存兜底注入修复 Lunar Client 1.8.9 中文字形和 Unicode 纹理页错误。</Description>
+    <Description>通过原版即时字体绘制和进服后资源刷新修复 Lunar Client 1.8.9 中文字形错误。</Description>
     <Copyright>Copyright © RainAura 2026</Copyright>
-    <Version>1.0.11</Version>
+    <Version>1.0.12</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <DebugType>none</DebugType>
   </PropertyGroup>
@@ -28,6 +28,11 @@
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
     <EmbeddedResource Include="assets\github.ico" LogicalName="RainAura.GitHubIcon" />
+    <EmbeddedResource Include="assets\fontpatch\asm-9.7.jar" LogicalName="RainAura.FontPatch.Asm" />
+    <EmbeddedResource Include="assets\fontpatch\asm-tree-9.7.jar" LogicalName="RainAura.FontPatch.AsmTree" />
+    <EmbeddedResource Include="assets\fontpatch\DonorFontRenderer.class" LogicalName="RainAura.FontPatch.Donor" />
+    <EmbeddedResource Include="assets\fontpatch\RainAuraFontRendererRestorer.class" LogicalName="RainAura.FontPatch.Helper" />
+    <EmbeddedResource Include="assets\fontpatch\RainAuraFontRendererRestorer$SafeClassWriter.class" LogicalName="RainAura.FontPatch.HelperWriter" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />

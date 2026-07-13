@@ -12,6 +12,11 @@
     <Compile Include="../src/Services/LunarConfigService.cs" Link="LunarConfigService.cs" />
     <Compile Include="../src/Services/LunarCachePatchService.cs" Link="LunarCachePatchService.cs" />
     <Compile Include="../src/Services/JavaClassPatcher.cs" Link="JavaClassPatcher.cs" />
-    <Compile Include="../src/Services/LunarTextureBindingPatcher.cs" Link="LunarTextureBindingPatcher.cs" />
+    <Compile Include="../src/Services/JavaRuntimeFontPatcher.cs" Link="JavaRuntimeFontPatcher.cs" />
+    <EmbeddedResource Include="../assets/fontpatch/asm-9.7.jar" LogicalName="RainAura.FontPatch.Asm" />
+    <EmbeddedResource Include="../assets/fontpatch/asm-tree-9.7.jar" LogicalName="RainAura.FontPatch.AsmTree" />
+    <EmbeddedResource Include="../assets/fontpatch/DonorFontRenderer.class" LogicalName="RainAura.FontPatch.Donor" />
+    <EmbeddedResource Include="../assets/fontpatch/RainAuraFontRendererRestorer.class" LogicalName="RainAura.FontPatch.Helper" />
+    <EmbeddedResource Include="../assets/fontpatch/RainAuraFontRendererRestorer$SafeClassWriter.class" LogicalName="RainAura.FontPatch.HelperWriter" />
   </ItemGroup>
 </Project>

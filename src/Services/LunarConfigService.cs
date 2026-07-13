@@ -65,7 +65,7 @@ internal sealed class LunarConfigService
         foreach (var target in result.CacheTargets)
             builder.AppendLine($"[{target.DisplayState}] {target.Source}");
         builder.AppendLine();
-        builder.AppendLine("修复原理：向 Lunar FontRenderer 注入兼容模式，禁止旧文字显示列表跨绘制复用，并强制同步 Unicode 字体纹理页。");
+        builder.AppendLine("修复原理：将 Lunar FontRenderer 改为 1.8.9 即时字体绘制，并在进入世界稳定后自动执行一次资源刷新。");
         builder.AppendLine("作者：RainAura");
         return builder.ToString();
     }

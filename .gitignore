@@ -6,3 +6,5 @@ LunarChineseFixer-v*.zip
 *.user
 *.suo
 *.log
+.vanilla-test/
+.testwork/

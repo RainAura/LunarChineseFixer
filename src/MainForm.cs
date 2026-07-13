@@ -73,7 +73,7 @@ internal sealed class MainForm : Form
         };
         var subtitle = new Label
         {
-            Text = "Lunar Client 1.8.9 中文错字修复  ·  v1.0.11",
+            Text = "Lunar Client 1.8.9 中文错字修复  ·  v1.0.12",
             Location = new Point(84, 50),
             Size = new Size(430, 22),
             ForeColor = Theme.Muted
@@ -308,9 +308,9 @@ internal sealed class MainForm : Form
             {
                 MessageBox.Show(
                     $"已修复并校验 {changed} 个 Lunar 1.8.9 缓存包。\n\n" +
-                    "补丁已注入 Lunar 字体渲染器：旧显示列表不会再跨绘制复用，并会强制同步 Unicode 字体纹理页。现在可以启动游戏。\n\n" +
+                    "补丁已注入 Lunar 字体渲染器：中文改用 1.8.9 即时绘制；进入世界约 5 秒后会自动刷新一次资源。现在可以启动游戏。\n\n" +
                     "Lunar 更新后如果覆盖缓存，重新运行本工具即可自动检测并修复。",
-                    "Lunar 字体缓存修复完成",
+                    "Lunar 中文错字修复完成",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }

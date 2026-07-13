@@ -85,13 +85,9 @@ internal sealed class LunarCachePatchService
             if (entries.Count == 0) return null;
 
             var fontStates = entries.Select(x => JavaClassPatcher.Inspect(ReadEntry(x))).ToList();
-            var textureEntries = FindTextureBindingEntries(archive, entries).ToList();
-            var textureStates = textureEntries.Select(x => LunarTextureBindingPatcher.Inspect(ReadEntry(x))).ToList();
-            var state = fontStates.Any(x => x == JavaPatchState.Patchable) ||
-                        textureStates.Any(x => x == JavaPatchState.Patchable)
+            var state = fontStates.Any(x => x == JavaPatchState.Patchable)
                 ? LunarCacheState.NeedsRepair
-                : fontStates.Any(x => x == JavaPatchState.AlreadyPatched) &&
-                  textureStates.Any(x => x == JavaPatchState.AlreadyPatched)
+                : fontStates.All(x => x == JavaPatchState.AlreadyPatched)
                     ? LunarCacheState.Repaired
                     : LunarCacheState.Unsupported;
             var cacheId = Directory.GetParent(path)?.Name ?? "未知版本";
@@ -114,23 +110,13 @@ internal sealed class LunarCachePatchService
             foreach (var entry in FindFontRendererEntries(archive))
             {
                 var originalClass = ReadEntry(entry);
-                if (!JavaClassPatcher.TryPatch(originalClass, out var patchedClass, out var state) ||
-                    state == JavaPatchState.Unsupported)
-                    continue;
+                var state = JavaClassPatcher.Inspect(originalClass);
                 if (state == JavaPatchState.Patchable)
+                {
+                    var patchedClass = JavaRuntimeFontPatcher.Transform(originalClass, path);
                     replacements.Add(new EntryReplacement(entry.FullName, entry.LastWriteTime,
-                        entry.ExternalAttributes, patchedClass, ReplacementKind.FontRenderer));
-            }
-
-            foreach (var entry in FindTextureBindingEntries(archive, FindFontRendererEntries(archive)))
-            {
-                var originalClass = ReadEntry(entry);
-                if (!LunarTextureBindingPatcher.TryPatch(originalClass, out var patchedClass, out var state) ||
-                    state == JavaPatchState.Unsupported)
-                    continue;
-                if (state == JavaPatchState.Patchable)
-                    replacements.Add(new EntryReplacement(entry.FullName, entry.LastWriteTime,
-                        entry.ExternalAttributes, patchedClass, ReplacementKind.TextureBinding));
+                        entry.ExternalAttributes, patchedClass));
+                }
             }
         }
 
@@ -165,9 +151,7 @@ internal sealed class LunarCachePatchService
             {
                 var checkEntry = checkArchive.GetEntry(replacement.Name) ??
                     throw new InvalidDataException($"写入后未找到 {replacement.Name}。");
-                var verifyState = replacement.Kind == ReplacementKind.FontRenderer
-                    ? JavaClassPatcher.Inspect(ReadEntry(checkEntry))
-                    : LunarTextureBindingPatcher.Inspect(ReadEntry(checkEntry));
+                var verifyState = JavaClassPatcher.Inspect(ReadEntry(checkEntry));
                 if (verifyState != JavaPatchState.AlreadyPatched)
                     throw new InvalidDataException($"{replacement.Name} 补丁写入校验失败。");
             }
@@ -193,29 +177,6 @@ internal sealed class LunarCachePatchService
                 name.Equals(FontRendererClassEntry, StringComparison.Ordinal) ||
                 name.EndsWith("/" + FontRendererClassEntry, StringComparison.Ordinal))
                 yield return entry;
-        }
-    }
-
-    private static IEnumerable<ZipArchiveEntry> FindTextureBindingEntries(ZipArchive archive,
-        IEnumerable<ZipArchiveEntry> fontRendererEntries)
-    {
-        var entriesByName = new Dictionary<string, ZipArchiveEntry>(StringComparer.Ordinal);
-        foreach (var entry in archive.Entries)
-            if (!entriesByName.ContainsKey(entry.FullName)) entriesByName.Add(entry.FullName, entry);
-        var yielded = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var fontEntry in fontRendererEntries)
-        {
-            var fontData = ReadEntry(fontEntry);
-            foreach (var className in LunarTextureBindingPatcher.GetReferencedClassNames(fontData))
-            {
-                var dotted = className.Replace('/', '.');
-                foreach (var candidate in new[] { className, className + ".class", dotted, dotted + ".class" })
-                {
-                    if (!entriesByName.TryGetValue(candidate, out var entry) || !yielded.Add(entry.FullName)) continue;
-                    if (LunarTextureBindingPatcher.Inspect(ReadEntry(entry)) != JavaPatchState.Unsupported)
-                        yield return entry;
-                }
-            }
         }
     }
 
@@ -284,22 +245,17 @@ internal sealed class LunarCachePatchService
 
     private sealed class EntryReplacement
     {
-        public EntryReplacement(string name, DateTimeOffset timestamp, int externalAttributes, byte[] data,
-            ReplacementKind kind)
+        public EntryReplacement(string name, DateTimeOffset timestamp, int externalAttributes, byte[] data)
         {
             Name = name;
             Timestamp = timestamp;
             ExternalAttributes = externalAttributes;
             Data = data;
-            Kind = kind;
         }
 
         public string Name { get; }
         public DateTimeOffset Timestamp { get; }
         public int ExternalAttributes { get; }
         public byte[] Data { get; }
-        public ReplacementKind Kind { get; }
     }
-
-    private enum ReplacementKind { FontRenderer, TextureBinding }
 }
