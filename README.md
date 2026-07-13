@@ -1,7 +1,7 @@
 # Lunar Chinese Fixer
 
 一个用于诊断和修复 Lunar Client 1.8.9 中文字库错位问题的 Windows 图形化工具。
-
+本项目由Codex构建
 旨在帮助使用 Lunar Client 1.8.9 的玩家解决中文文字显示错乱问题。
 
 ## 功能
@@ -46,7 +46,7 @@ dotnet publish -c Release -r win-x64 --self-contained true
 
 ## 作者
 
-RainAura
+RainAura & Codex
 
 ## 许可证
 
