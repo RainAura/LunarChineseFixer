@@ -31,6 +31,8 @@ try
     var after = cacheService.Scan().Where(x => x.Path.StartsWith(cacheDirectory, StringComparison.OrdinalIgnoreCase)).ToList();
     Assert(after.Count == 2 && after.All(x => x.State == LunarCacheState.Repaired),
         "不同归档名和类条目格式修复后都应通过字节码复检");
+    var outputArchive = Environment.GetEnvironmentVariable("RAINAURA_PATCHED_OUTPUT");
+    if (!string.IsNullOrWhiteSpace(outputArchive)) File.Copy(testArchive, outputArchive, true);
     Assert(File.Exists(testArchive + LunarCachePatchService.BackupSuffix), "修复前必须创建原始备份");
     Assert(File.Exists(alternateArchive + LunarCachePatchService.BackupSuffix), "JAR 缓存修复前也必须创建原始备份");
     Assert(cacheService.Restore(after) == 2, "应能恢复两种原始 Lunar 缓存包");
@@ -38,7 +40,7 @@ try
     Assert(rollback.Count == 2 && rollback.All(x => x.State == LunarCacheState.NeedsRepair),
         "恢复后应回到未修复状态");
 
-    Console.WriteLine("PASS: Lunar 缓存扫描、补丁、校验、备份、恢复全部通过。");
+    Console.WriteLine("PASS: Lunar 缓存扫描、双层补丁、校验、备份、恢复全部通过。");
     return 0;
 }
 finally

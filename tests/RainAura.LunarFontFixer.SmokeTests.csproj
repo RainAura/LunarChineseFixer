@@ -12,5 +12,6 @@
     <Compile Include="../src/Services/LunarConfigService.cs" Link="LunarConfigService.cs" />
     <Compile Include="../src/Services/LunarCachePatchService.cs" Link="LunarCachePatchService.cs" />
     <Compile Include="../src/Services/JavaClassPatcher.cs" Link="JavaClassPatcher.cs" />
+    <Compile Include="../src/Services/LunarTextureBindingPatcher.cs" Link="LunarTextureBindingPatcher.cs" />
   </ItemGroup>
 </Project>
